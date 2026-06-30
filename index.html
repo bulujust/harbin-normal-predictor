@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>哈尔滨师范大学录取预测</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Harbin Normal University</p>
+          <h1>哈尔滨师范大学录取预测</h1>
+          <p class="subtitle">输入地区、科类、分数和位次，系统根据近三年专业录取最低分与最低位次，推算今年可报专业档位。</p>
+        </div>
+        <div class="hero-badge">
+          <span>2026</span>
+          <strong>AI 预测</strong>
+        </div>
+      </section>
+
+      <section class="panel control-panel">
+        <div class="field">
+          <label for="province">地区</label>
+          <select id="province">
+            <option value="黑龙江">黑龙江</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="track">科类</label>
+          <select id="track">
+            <option value="物理类">物理类</option>
+            <option value="历史类">历史类</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="score">高考分数</label>
+          <input id="score" type="number" min="0" max="750" value="500" />
+        </div>
+        <div class="field">
+          <label for="rank">全省位次</label>
+          <input id="rank" type="number" min="1" value="30000" />
+        </div>
+        <div class="field">
+          <label for="major">目标专业</label>
+          <select id="major">
+            <option value="">全部专业</option>
+          </select>
+        </div>
+        <button id="predictBtn" type="button">开始预测</button>
+      </section>
+
+      <section class="summary-grid" aria-live="polite">
+        <article class="metric">
+          <span>可重点考虑</span>
+          <strong id="stableCount">0</strong>
+          <em>稳 / 保专业</em>
+        </article>
+        <article class="metric">
+          <span>最高把握</span>
+          <strong id="bestMajor">-</strong>
+          <em id="bestChance">等待输入</em>
+        </article>
+        <article class="metric accent">
+          <span>今年参考线</span>
+          <strong id="predictedLine">-</strong>
+          <em>预测值已高亮</em>
+        </article>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>专业预测结果</h2>
+            <p>按录取把握排序，预测位次越小代表竞争越激烈。</p>
+          </div>
+          <div class="legend">
+            <span><i class="safe"></i>保</span>
+            <span><i class="steady"></i>稳</span>
+            <span><i class="rush"></i>冲</span>
+            <span><i class="risk"></i>风险</span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>专业</th>
+                <th>2023最低分/位次</th>
+                <th>2024最低分/位次</th>
+                <th>2025最低分/位次</th>
+                <th class="predicted">2026预测分/位次</th>
+                <th>档位</th>
+                <th>说明</th>
+              </tr>
+            </thead>
+            <tbody id="resultBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel detail-panel">
+        <div>
+          <h2>预测逻辑</h2>
+          <p>
+            系统优先看位次，不只看分数。预测位次 = 2025 位次 × 0.5 + 2024 位次 × 0.3 + 2023 位次 × 0.2，
+            再结合 2026 黑龙江本科控制线变化做轻量修正。第一版用于志愿辅助，不替代正式填报意见。
+          </p>
+        </div>
+        <div>
+          <h2>数据口径</h2>
+          <p>
+            当前内置数据为黑龙江普通本科批及同口径近似整理；2023 年文史/理工已映射为 2026 年历史类/物理类。
+            后续可接入学校招生网完整 Excel 或 CSV，扩展到其他省份与专项计划。
+          </p>
+        </div>
+      </section>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>
