@@ -9,88 +9,98 @@
   <body>
     <main class="app">
       <section class="hero">
-        <div>
+        <div class="hero-copy">
           <p class="eyebrow">Harbin Normal University</p>
           <h1>哈尔滨师范大学录取预测</h1>
-          <p class="subtitle">输入地区、科类、分数和位次，系统根据近三年专业录取最低分与最低位次，推算今年可报专业档位。</p>
+          <p class="subtitle">
+            选择招生类型、省份和科类，输入分数与位次。普通类按近三年专业最低分和最低位次估算今年档位；艺术类、体育单招单独展示规则口径。
+          </p>
         </div>
-        <div class="hero-badge">
+        <div class="hero-badge" aria-label="2026 AI 预测">
           <span>2026</span>
           <strong>AI 预测</strong>
         </div>
       </section>
 
-      <section class="panel control-panel">
+      <section class="tabs" aria-label="招生类型">
+        <button class="tab active" type="button" data-category="普通类">普通类</button>
+        <button class="tab" type="button" data-category="艺术类">艺术类</button>
+        <button class="tab" type="button" data-category="体育单招">体育单招</button>
+        <button class="tab" type="button" data-category="数据说明">数据说明</button>
+      </section>
+
+      <section class="panel status-panel">
+        <div>
+          <strong id="statusTitle">普通类预测</strong>
+          <p id="statusText">黑龙江普通本科批已录入较完整专业线；其他省份已预留入口，等待导入学校招生网或省考试院专业线。</p>
+        </div>
+        <span id="dataBadge" class="data-badge ready">黑龙江已录入</span>
+      </section>
+
+      <section class="panel control-panel" id="controlPanel">
         <div class="field">
           <label for="province">地区</label>
-          <select id="province">
-            <option value="黑龙江">黑龙江</option>
-          </select>
+          <select id="province"></select>
         </div>
         <div class="field">
-          <label for="track">科类</label>
-          <select id="track">
-            <option value="物理类">物理类</option>
-            <option value="历史类">历史类</option>
-          </select>
+          <label for="track">科类 / 方向</label>
+          <select id="track"></select>
         </div>
-        <div class="field">
+        <div class="field score-field">
           <label for="score">高考分数</label>
           <input id="score" type="number" min="0" max="750" value="500" />
         </div>
-        <div class="field">
+        <div class="field rank-field">
           <label for="rank">全省位次</label>
           <input id="rank" type="number" min="1" value="30000" />
         </div>
-        <div class="field">
+        <div class="field major-field">
           <label for="major">目标专业</label>
-          <select id="major">
-            <option value="">全部专业</option>
-          </select>
+          <select id="major"></select>
         </div>
         <button id="predictBtn" type="button">开始预测</button>
       </section>
 
       <section class="summary-grid" aria-live="polite">
         <article class="metric">
-          <span>可重点考虑</span>
+          <span id="metricOneLabel">可重点考虑</span>
           <strong id="stableCount">0</strong>
-          <em>稳 / 保专业</em>
+          <em id="metricOneHint">稳 / 保专业</em>
         </article>
         <article class="metric">
-          <span>最高把握</span>
+          <span id="metricTwoLabel">最高把握</span>
           <strong id="bestMajor">-</strong>
           <em id="bestChance">等待输入</em>
         </article>
         <article class="metric accent">
-          <span>今年参考线</span>
+          <span id="metricThreeLabel">今年参考线</span>
           <strong id="predictedLine">-</strong>
-          <em>预测值已高亮</em>
+          <em id="metricThreeHint">预测值用橙色标注</em>
         </article>
       </section>
 
-      <section class="panel">
+      <section class="panel result-panel">
         <div class="section-head">
           <div>
-            <h2>专业预测结果</h2>
-            <p>按录取把握排序，预测位次越小代表竞争越激烈。</p>
+            <h2 id="resultTitle">专业预测结果</h2>
+            <p id="resultIntro">按录取把握排序，预测位次越小代表竞争越激烈。</p>
           </div>
-          <div class="legend">
+          <div class="legend" id="legend">
             <span><i class="safe"></i>保</span>
             <span><i class="steady"></i>稳</span>
             <span><i class="rush"></i>冲</span>
             <span><i class="risk"></i>风险</span>
           </div>
         </div>
-        <div class="table-wrap">
+        <div class="table-wrap" id="resultWrap">
           <table>
             <thead>
               <tr>
                 <th>专业</th>
-                <th>2023最低分/位次</th>
-                <th>2024最低分/位次</th>
-                <th>2025最低分/位次</th>
-                <th class="predicted">2026预测分/位次</th>
+                <th>2023 最低分 / 位次</th>
+                <th>2024 最低分 / 位次</th>
+                <th>2025 最低分 / 位次</th>
+                <th class="predicted">2026 预测分 / 位次</th>
                 <th>档位</th>
                 <th>说明</th>
               </tr>
@@ -98,21 +108,20 @@
             <tbody id="resultBody"></tbody>
           </table>
         </div>
+        <div class="cards-list" id="cardsList" hidden></div>
       </section>
 
       <section class="panel detail-panel">
         <div>
           <h2>预测逻辑</h2>
           <p>
-            系统优先看位次，不只看分数。预测位次 = 2025 位次 × 0.5 + 2024 位次 × 0.3 + 2023 位次 × 0.2，
-            再结合 2026 黑龙江本科控制线变化做轻量修正。第一版用于志愿辅助，不替代正式填报意见。
+            普通类优先看位次，不只看分数。系统按 2025×0.5、2024×0.3、2023×0.2 的权重估算专业热度，再结合 2026 参考线做轻量修正。
           </p>
         </div>
         <div>
           <h2>数据口径</h2>
           <p>
-            当前内置数据为黑龙江普通本科批及同口径近似整理；2023 年文史/理工已映射为 2026 年历史类/物理类。
-            后续可接入学校招生网完整 Excel 或 CSV，扩展到其他省份与专项计划。
+            当前已整理黑龙江普通本科批专业线，并给全国省份、艺术类、体育单招预留完整入口。未导入官方专业线的省份会明确提示，不会输出伪预测。
           </p>
         </div>
       </section>
