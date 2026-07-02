@@ -24,6 +24,7 @@ const provinces = [
   "四川",
   "贵州",
   "云南",
+  "西藏",
   "陕西",
   "甘肃",
   "青海",
@@ -331,6 +332,7 @@ const artCards = [
 ];
 
 const artAdmissions = window.HRBNU_ART_ADMISSIONS || [];
+const sportAdmissions = window.HRBNU_SPORT_ADMISSIONS || [];
 
 const sportCards = [
   {
@@ -357,14 +359,14 @@ const dataCards = [
     text: "省份下拉已包含全国主要招生省份。没有专业线的省份会显示待导入，不会输出看似准确但没有依据的结果。",
   },
   {
-    title: "黑龙江普通类先可用",
+    title: "官网专业线已批量导入",
     kicker: "已录入",
-    text: "当前普通类已整理黑龙江物理类、历史类部分三年专业分和位次，部分专业只有 2025 年记录，会在表格里标注缺数据。",
+    text: "当前已按哈师大招生网导入 2023-2025 年普通类、艺术类和体育类公开分数线，页面会按省份自动显示。",
   },
   {
     title: "完整版本的数据来源",
-    kicker: "待导入",
-    text: "完整版本建议从学校本科招生网、各省考试院投档表或官方 Excel/PDF 导入，按省份、科类、批次、专业四个维度维护。",
+    kicker: "已接入官网",
+    text: "数据来自学校本科招生网历年分数查询接口；若后续要更精细预测，可继续补各省考试院投档位次和招生计划。",
   },
 ];
 
@@ -432,15 +434,15 @@ function formatValue(value) {
 }
 
 function hasData(item) {
-  return Object.values(item.scores).some((year) => year?.rank);
+  return Object.values(item.scores).some((year) => year?.rank || year?.score);
 }
 
-function weightedAverage(values) {
+function weightedAverageField(values, field) {
   const weights = { 2025: 0.5, 2024: 0.3, 2023: 0.2 };
-  const usable = Object.entries(weights).filter(([year]) => values[year]?.rank);
+  const usable = Object.entries(weights).filter(([year]) => values[year]?.[field]);
   const totalWeight = usable.reduce((sum, [, weight]) => sum + weight, 0);
   if (!totalWeight) return null;
-  return Math.round(usable.reduce((sum, [year, weight]) => sum + values[year].rank * weight, 0) / totalWeight);
+  return Math.round(usable.reduce((sum, [year, weight]) => sum + values[year][field] * weight, 0) / totalWeight);
 }
 
 function estimateScore(track, rank) {
@@ -461,6 +463,7 @@ function estimateScore(track, rank) {
 }
 
 function applyYearAdjustment(track, baseRank) {
+  if (!baseRank) return null;
   const lines = controlLines[track];
   if (!lines) return baseRank;
   const lineChange = lines[2026] - lines[2025];
@@ -469,6 +472,9 @@ function applyYearAdjustment(track, baseRank) {
 }
 
 function classify(userRank, predictedRank) {
+  if (!userRank || !predictedRank) {
+    return { label: "参考", className: "rush", note: "该专业缺少可比位次，先按历年分数作参考。" };
+  }
   const gap = predictedRank - userRank;
   const ratio = gap / predictedRank;
 
@@ -484,8 +490,19 @@ function classify(userRank, predictedRank) {
   return { label: "风险", className: "risk", note: `你的位次落后预测线 ${Math.abs(gap).toLocaleString("zh-CN")} 名，录取难度较高。` };
 }
 
+function classifyByScore(userScore, predictedScore) {
+  if (!userScore || !predictedScore) {
+    return { label: "参考", className: "rush", note: "该专业缺少位次，建议结合当年招生计划和省考试院投档线判断。" };
+  }
+  const gap = userScore - predictedScore;
+  if (gap >= 15) return { label: "保", className: "safe", note: `你的分数高于预测线 ${gap} 分，录取把握较高。` };
+  if (gap >= 5) return { label: "稳", className: "steady", note: `你的分数高于预测线 ${gap} 分，可作为重点选择。` };
+  if (gap >= -5) return { label: "冲", className: "rush", note: "你的分数接近预测线，建议结合招生计划和服从调剂判断。" };
+  return { label: "风险", className: "risk", note: `你的分数低于预测线 ${Math.abs(gap)} 分，录取难度较高。` };
+}
+
 function supportsOrdinaryPrediction() {
-  return state.category === "普通类" && els.province.value === "黑龙江" && ["物理类", "历史类"].includes(els.track.value);
+  return state.category === "普通类" && filteredAdmissions().some(hasData);
 }
 
 function filteredAdmissions() {
@@ -497,18 +514,22 @@ function filteredAdmissions() {
 
 function buildRows() {
   const userRank = Number(els.rank.value || 0);
+  const userScore = Number(els.score.value || 0);
   return filteredAdmissions()
     .filter(hasData)
     .map((item) => {
-      const baseRank = weightedAverage(item.scores);
+      const baseRank = weightedAverageField(item.scores, "rank");
+      const baseScore = weightedAverageField(item.scores, "score");
       const predictedRank = applyYearAdjustment(item.track, baseRank);
-      const predictedScore = estimateScore(item.track, predictedRank);
-      const verdict = classify(userRank, predictedRank);
+      const predictedScore = predictedRank ? estimateScore(item.track, predictedRank) || baseScore : baseScore;
+      const verdict = predictedRank ? classify(userRank, predictedRank) : classifyByScore(userScore, predictedScore);
       return { ...item, predictedRank, predictedScore, verdict };
     })
     .sort((a, b) => {
       const order = { safe: 0, steady: 1, rush: 2, risk: 3 };
-      return order[a.verdict.className] - order[b.verdict.className] || a.predictedRank - b.predictedRank;
+      const rankA = a.predictedRank || Number.MAX_SAFE_INTEGER;
+      const rankB = b.predictedRank || Number.MAX_SAFE_INTEGER;
+      return order[a.verdict.className] - order[b.verdict.className] || rankA - rankB || (b.predictedScore || 0) - (a.predictedScore || 0);
     });
 }
 
@@ -520,13 +541,33 @@ function getArtRows() {
     .sort((a, b) => b.year - a.year || (a.minScore || 9999) - (b.minScore || 9999) || a.major.localeCompare(b.major, "zh-CN"));
 }
 
+function getSportRows() {
+  const major = els.major.value;
+  return sportAdmissions
+    .filter((item) => item.province === els.province.value && item.track === els.track.value)
+    .filter((item) => !major || item.major === major)
+    .sort((a, b) => b.year - a.year || (a.minScore || 9999) - (b.minScore || 9999) || a.major.localeCompare(b.major, "zh-CN"));
+}
+
 function fillSelect(select, values, selected) {
   select.innerHTML = values.map((value) => `<option value="${value}">${value}</option>`).join("");
   if (selected && values.includes(selected)) select.value = selected;
 }
 
+function getProvinceOptions() {
+  return [
+    ...new Set([
+      ...provinces,
+      ...ordinaryAdmissions.map((item) => item.province),
+      ...artAdmissions.map((item) => item.province),
+      ...sportAdmissions.map((item) => item.province),
+    ]),
+  ];
+}
+
 function renderProvinceOptions() {
-  fillSelect(els.province, provinces, els.province.value || "黑龙江");
+  const options = getProvinceOptions();
+  fillSelect(els.province, options, els.province.value || "黑龙江");
 }
 
 function renderTrackOptions() {
@@ -538,6 +579,11 @@ function renderTrackOptions() {
   if (state.category === "艺术类" && artAdmissions.length) {
     const tracks = [...new Set(artAdmissions.filter((item) => item.province === els.province.value).map((item) => item.track))];
     fillSelect(els.track, tracks.length ? tracks : ["艺术类"], tracks[0]);
+    return;
+  }
+  if (state.category === "体育单招" && sportAdmissions.length) {
+    const tracks = [...new Set(sportAdmissions.filter((item) => item.province === els.province.value).map((item) => item.track))];
+    fillSelect(els.track, tracks.length ? tracks : ["体育类"], tracks[0]);
     return;
   }
   fillSelect(els.track, trackOptions[state.category], trackOptions[state.category][0]);
@@ -558,6 +604,24 @@ function renderMajorOptions() {
     }
 
     els.major.innerHTML = `<option value="">全部艺术专业</option>${majors.map((major) => `<option value="${major}">${major}</option>`).join("")}`;
+    if (majors.includes(current)) els.major.value = current;
+    return;
+  }
+
+  if (state.category === "体育单招") {
+    const current = els.major.value;
+    const majors = sportAdmissions
+      .filter((item) => item.province === els.province.value && item.track === els.track.value)
+      .map((item) => item.major)
+      .filter((value, index, arr) => arr.indexOf(value) === index)
+      .sort((a, b) => a.localeCompare(b, "zh-CN"));
+
+    if (!majors.length) {
+      els.major.innerHTML = `<option value="">待导入体育类数据</option>`;
+      return;
+    }
+
+    els.major.innerHTML = `<option value="">全部体育类专业</option>${majors.map((major) => `<option value="${major}">${major}</option>`).join("")}`;
     if (majors.includes(current)) els.major.value = current;
     return;
   }
@@ -591,23 +655,30 @@ function setStatus(kind, title, text) {
 
 function renderStatus() {
   if (state.category === "艺术类") {
-    if (artAdmissions.length && els.province.value === "黑龙江") {
-      setStatus("ready", "艺术类分数已导入", `已导入 ${dataMeta.artCount || artAdmissions.length} 条艺术类分数记录。艺术类先展示历年分数，不套普通高考位次预测。`);
+    const provinceRows = artAdmissions.filter((item) => item.province === els.province.value);
+    if (provinceRows.length) {
+      setStatus("ready", "艺术类分数已导入", `${els.province.value} 已导入 ${provinceRows.length} 条艺术类分数记录。艺术类先展示历年分数，不套普通高考位次预测。`);
     } else {
       setStatus("pending", "该省份艺术类待导入", "艺术类需要按省份导入文化分、专业统考分、综合分和投档规则后再预测。");
     }
     return;
   }
   if (state.category === "体育单招") {
-    setStatus("pending", "体育单招入口已拆分", "体育单招走专项考试、文化考试和学校规则，不能用普通高考分数位次直接判断。");
+    const provinceRows = sportAdmissions.filter((item) => item.province === els.province.value);
+    if (provinceRows.length) {
+      setStatus("ready", "体育类分数已导入", `${els.province.value} 已导入 ${provinceRows.length} 条官网体育类分数记录。体育单招仍需专项考试规则，当前先展示历年分数。`);
+    } else {
+      setStatus("pending", "体育单招入口已拆分", "体育单招走专项考试、文化考试和学校规则，不能用普通高考分数位次直接判断。");
+    }
     return;
   }
   if (state.category === "数据说明") {
-    setStatus("ready", "已导入公开表格数据", `普通类 ${dataMeta.ordinaryCount || ordinaryAdmissions.length} 条，艺术类 ${dataMeta.artCount || artAdmissions.length} 条；学校官网入口保留为后续核验来源。`);
+    setStatus("ready", "已导入官网公开数据", `普通类 ${dataMeta.ordinaryCount || ordinaryAdmissions.length} 条，艺术类 ${dataMeta.artCount || artAdmissions.length} 条，体育类 ${dataMeta.sportCount || sportAdmissions.length} 条；覆盖 ${dataMeta.provinceCount || getProvinceOptions().length} 个省区市。`);
     return;
   }
   if (supportsOrdinaryPrediction()) {
-    setStatus("ready", "普通类预测", `已导入黑龙江普通类 ${dataMeta.ordinaryCount || ordinaryAdmissions.length} 条，包含本科批、提前批、国家专项、地方专项、公费师范等批次。`);
+    const provinceRows = ordinaryAdmissions.filter((item) => item.province === els.province.value);
+    setStatus("ready", "普通类预测", `${els.province.value} 已导入普通类 ${provinceRows.length} 条，包含本科批、提前批、专项计划、公费师范等批次。`);
     return;
   }
   setStatus("pending", "该省份暂未导入专业线", "这个省份或科类的入口已经有了，但还缺少近三年专业最低分和最低位次。导入官方数据后即可开放预测。");
@@ -629,11 +700,25 @@ function renderSummary(rows) {
       els.predictedLine.textContent = "艺术类";
       return;
     }
+    if (state.category === "体育单招") {
+      const sportRows = getSportRows();
+      const years = [...new Set(sportRows.map((item) => item.year))].sort();
+      els.metricOneLabel.textContent = "体育记录";
+      els.metricOneHint.textContent = "官网体育类分数";
+      els.metricTwoLabel.textContent = "覆盖年份";
+      els.metricThreeLabel.textContent = "单招口径";
+      els.metricThreeHint.textContent = "需另看专项考试";
+      els.stableCount.textContent = sportRows.length;
+      els.bestMajor.textContent = years.length ? years.join(" / ") : "待导入";
+      els.bestChance.textContent = "当前先展示体育类历年分数";
+      els.predictedLine.textContent = "体育类";
+      return;
+    }
 
     const labels = {
       艺术类: ["艺术入口", "需看综合分", "待导入规则"],
       体育单招: ["单招入口", "需看专项分", "待导入简章"],
-      数据说明: ["全国省份", "已预留入口", "待批量导入"],
+      数据说明: ["全国省份", "官网已导入", "可继续核验"],
     };
     const [one, two, three] = labels[state.category];
     els.metricOneLabel.textContent = one;
@@ -641,7 +726,7 @@ function renderSummary(rows) {
     els.metricTwoLabel.textContent = "判断口径";
     els.metricThreeLabel.textContent = "数据状态";
     els.metricThreeHint.textContent = "不输出伪预测";
-    els.stableCount.textContent = state.category === "数据说明" ? provinces.length : trackOptions[state.category].length;
+    els.stableCount.textContent = state.category === "数据说明" ? getProvinceOptions().length : trackOptions[state.category].length;
     els.bestMajor.textContent = two;
     els.bestChance.textContent = "录入官方规则后开放预测";
     els.predictedLine.textContent = three;
@@ -666,8 +751,10 @@ function renderSummary(rows) {
   const best = stableRows[0] || rows[0];
   els.stableCount.textContent = stableRows.length;
   els.bestMajor.textContent = best ? best.major.replace("（师范类）", "") : "-";
-  els.bestChance.textContent = best ? `${best.verdict.label}，预测位次 ${best.predictedRank.toLocaleString("zh-CN")}` : "暂无结果";
-  els.predictedLine.textContent = best ? `${best.predictedScore} 分` : "-";
+    els.bestChance.textContent = best
+      ? `${best.verdict.label}，${best.predictedRank ? `预测位次 ${best.predictedRank.toLocaleString("zh-CN")}` : `预测分 ${formatValue(best.predictedScore)}`}`
+      : "暂无结果";
+  els.predictedLine.textContent = best ? `${formatValue(best.predictedScore)} 分` : "-";
 }
 
 function renderOrdinaryTable(rows) {
@@ -700,7 +787,7 @@ function renderOrdinaryTable(rows) {
     .map((item) => {
       const cells = [2023, 2024, 2025]
         .map((year) => {
-          const value = item.scores[year];
+          const value = item.scores[year] || {};
           return `<td>${formatValue(value.score)}<br><span class="muted">${formatValue(value.rank)}</span></td>`;
         })
         .join("");
@@ -708,7 +795,7 @@ function renderOrdinaryTable(rows) {
       return `<tr>
         <td><strong>${item.major}</strong><br><span class="muted">${item.batch || "本科批"}</span></td>
         ${cells}
-        <td class="predicted">${formatValue(item.predictedScore)}<br><span>${formatValue(item.predictedRank)}</span></td>
+        <td class="predicted">${formatValue(item.predictedScore)}<br><span>${item.predictedRank ? formatValue(item.predictedRank) : "按分数判断"}</span></td>
         <td><span class="tag ${item.verdict.className}">${item.verdict.label}</span></td>
         <td>${item.verdict.note}</td>
       </tr>`;
@@ -753,6 +840,43 @@ function renderArtTable() {
     .join("");
 }
 
+function renderSportTable() {
+  const rows = getSportRows();
+  els.resultWrap.hidden = false;
+  els.cardsList.hidden = true;
+  els.legend.hidden = true;
+  els.resultTitle.textContent = "体育类历年分数";
+  els.resultIntro.textContent = "这里展示的是官网公开的体育类录取分数；体育单招还要看专项考试、文化考试和学校单招简章，不能直接用普通位次预测。";
+  els.resultWrap.querySelector("thead").innerHTML = `<tr>
+    <th>年份</th>
+    <th>专业 / 批次</th>
+    <th>科类</th>
+    <th>最低分</th>
+    <th>平均分</th>
+    <th>最高分</th>
+    <th>备注</th>
+  </tr>`;
+
+  if (!rows.length) {
+    els.body.innerHTML = `<tr class="empty-row"><td colspan="7">${els.province.value} ${els.track.value} 体育类数据暂未导入。</td></tr>`;
+    return;
+  }
+
+  els.body.innerHTML = rows
+    .map(
+      (item) => `<tr>
+        <td>${item.year}</td>
+        <td><strong>${item.major}</strong><br><span class="muted">${item.batch}</span></td>
+        <td>${item.track}</td>
+        <td class="predicted">${formatValue(item.minScore)}</td>
+        <td>${formatValue(item.avgScore)}</td>
+        <td>${formatValue(item.maxScore)}</td>
+        <td>${item.note || item.type || "按体育类投档规则录取"}</td>
+      </tr>`,
+    )
+    .join("");
+}
+
 function renderCards(title, intro, cards) {
   els.resultWrap.hidden = true;
   els.cardsList.hidden = false;
@@ -780,10 +904,14 @@ function renderSpecialCategory() {
     return;
   }
   if (state.category === "体育单招") {
-    renderCards("体育单招预测口径", "体育单招不走普通位次算法，需要单独录入专项与文化考试数据。", sportCards);
+    if (getSportRows().length) {
+      renderSportTable();
+    } else {
+      renderCards("体育单招预测口径", "体育单招不走普通位次算法，需要单独录入专项与文化考试数据。", sportCards);
+    }
     return;
   }
-  renderCards("完整版数据说明", "现在先把全国省份和多招生类型入口搭好，后续可以批量接入官方表格。", dataCards);
+  renderCards("完整版数据说明", "已接入哈师大招生网 2023-2025 年公开分数线，后续可继续补各省考试院投档位次和招生计划。", dataCards);
 }
 
 function renderControls() {
